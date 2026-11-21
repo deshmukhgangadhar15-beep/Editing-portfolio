@@ -40,6 +40,12 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
 .badge{display:inline-block;border:1px solid var(--line);background:var(--panel2);border-radius:999px;padding:.05rem .65rem;font-size:.8rem;color:var(--muted);margin-left:.4rem}
 .toast{position:fixed;left:50%;bottom:calc(1.5rem + env(safe-area-inset-bottom,0px));transform:translate(-50%,200%);background:var(--ok);color:#04230f;font-weight:800;border-radius:999px;padding:.8rem 1.5rem;transition:transform .35s;z-index:20;max-width:90vw;text-align:center}
 .toast.show{transform:translate(-50%,0)}.toast.err{background:var(--pink);color:#fff}
+.vbox{border:1px solid var(--line);background:rgba(20,29,64,.55);border-radius:18px;padding:1.1rem;margin-bottom:1rem}
+.vbox:nth-child(3n+1){border-left:3px solid var(--cyan)}.vbox:nth-child(3n+2){border-left:3px solid var(--violet)}.vbox:nth-child(3n){border-left:3px solid var(--pink)}
+.vh{display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem}
+.tabs{display:flex;gap:.5rem;margin:.8rem 0 1.2rem;position:sticky;top:calc(.5rem + env(safe-area-inset-top,0px));z-index:10;padding:.4rem;background:rgba(14,21,48,.9);border:1px solid var(--line);border-radius:999px;backdrop-filter:blur(10px)}
+.tab{flex:1;border:0;border-radius:999px;padding:.7rem 1rem;font:800 .98rem "Manrope",sans-serif;cursor:pointer;color:var(--muted);background:none;transition:.2s}
+.tab.active{color:#070b1a;background:linear-gradient(90deg,var(--cyan),var(--violet),var(--pink))}
 [hidden]{display:none!important}
 #login{text-align:center;margin-top:12vh}
 @media (max-width:640px){.grid{grid-template-columns:1fr}}
@@ -62,7 +68,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
       <div class="r"><a class="btn out sm" href="index.html" target="_blank" style="text-decoration:none;display:inline-block;line-height:1.9">View website</a><button class="btn out sm" id="signout">Sign out</button></div>
     </div>
 
-    <div class="card c1">
+    <div class="tabs"><button type="button" class="tab active" data-t="details">Website details</button><button type="button" class="tab" data-t="videos">Videos</button></div>
+
+    <div class="card c1" id="sec-details">
       <h2>Website details</h2>
       <p class="sub">These change your homepage as soon as you press Save.</p>
       <form id="settings">
@@ -79,24 +87,13 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
       </form>
     </div>
 
-    <div class="card c2">
-      <h2 id="vform-title">Add a video</h2>
-      <p class="sub">Paste a YouTube link. The thumbnail is added automatically.</p>
-      <form id="add">
-        <div class="grid">
-          <label>Video title<input id="title" required placeholder="Gaming montage 1"></label>
-          <label>Category<select id="cat"><option value="gaming">Gaming</option><option value="youtube">YouTube</option><option value="reels">Reels</option></select></label>
-        </div>
-        <label>YouTube link<input id="url" type="url" required placeholder="https://www.youtube.com/watch?v=..."></label>
-        <label>Short description (optional)<textarea id="desc" rows="2"></textarea></label>
-        <button class="btn" type="submit" id="vsave">Save video</button>
-        <button class="btn out" type="button" id="vcancel" hidden>Cancel</button>
-      </form>
-    </div>
-
-    <div class="card c3">
-      <h2>Your videos</h2>
-      <div id="list"><p class="sub">Loading…</p></div>
+    <div class="card c2" id="sec-videos" hidden>
+      <div class="top" style="margin-bottom:.4rem">
+        <div><h2>Video boxes</h2><p class="sub" style="margin:.2rem 0 0">Each box is one video on your website. Paste its YouTube link inside the box.</p></div>
+        <button class="btn out sm" type="button" id="addbox">+ Add video box</button>
+      </div>
+      <div id="boxes"><p class="sub">Loading…</p></div>
+      <button class="btn" type="button" id="saveall" style="margin-top:.6rem">Save all videos</button>
     </div>
   </div>
 </div>
@@ -111,7 +108,7 @@ var FIREBASE_CONFIG={apiKey:'AIzaSyBWaWVw0f9AcBgxKr6G1UzqGij1xBJ3p5A',authDomain
 var ADMIN_EMAIL='deshmukhgangadhar15@gmail.com';
 
 var $=function(i){return document.getElementById(i)};
-var editId=null,auth,db;
+var auth,db;
 function toast(t,err){var e=$('toast');e.textContent=t;e.className='toast show'+(err?' err':'');clearTimeout(toast.t);toast.t=setTimeout(function(){e.className='toast'},3200)}
 
 if(!FIREBASE_CONFIG.apiKey){$('lmsg').textContent='Firebase is not set up yet. Paste your Firebase config in this file first.'}
@@ -147,34 +144,52 @@ $('settings').onsubmit=function(e){
   }).then(function(){toast('✓ Saved. Your website is updated.')}).catch(function(er){toast('Could not save: '+er.message,1)});
 };
 
-function resetForm(){editId=null;$('add').reset();$('vform-title').textContent='Add a video';$('vsave').textContent='Save video';$('vcancel').hidden=true}
-$('vcancel').onclick=resetForm;
-$('add').onsubmit=function(e){
-  e.preventDefault();
-  var data={title:$('title').value.trim(),url:$('url').value.trim(),category:$('cat').value,description:$('desc').value.trim()};
-  var editing=!!editId,op;
-  if(editing){op=db.collection('videos').doc(editId).update(data)}
-  else{data.createdAt=firebase.firestore.FieldValue.serverTimestamp();op=db.collection('videos').add(data)}
-  op.then(function(){resetForm();toast(editing?'✓ Video updated.':'✓ Video added. It is live on your website.');loadVideos()})
-    .catch(function(er){toast('Could not save: '+er.message,1)});
-};
-function loadVideos(){
-  db.collection('videos').orderBy('createdAt','desc').get().then(function(s){
-    var l=$('list');l.innerHTML='';
-    if(s.empty){l.innerHTML='<p class="sub">No videos yet. Add your first one above.</p>';return}
-    s.forEach(function(d){
-      var v=d.data(),r=document.createElement('div');r.className='row';
-      var t=document.createElement('div'),b=document.createElement('b'),bd=document.createElement('span'),sm=document.createElement('small');
-      b.textContent=v.title;bd.className='badge';bd.textContent=v.category;b.appendChild(bd);sm.textContent=v.url;t.appendChild(b);t.appendChild(sm);
-      var ed=document.createElement('button');ed.className='btn out sm';ed.textContent='Edit';
-      ed.onclick=function(){editId=d.id;$('title').value=v.title;$('url').value=v.url;$('cat').value=v.category;$('desc').value=v.description||'';$('vform-title').textContent='Edit video';$('vsave').textContent='Save changes';$('vcancel').hidden=false;scrollTo({top:$('add').offsetTop-80,behavior:'smooth'})};
-      var x=document.createElement('button');x.className='btn del sm';x.textContent='Delete';
-      x.onclick=function(){if(confirm('Delete "'+v.title+'"?'))d.ref.delete().then(function(){toast('Video deleted.');loadVideos()})};
-      var bx=document.createElement('div');bx.style.cssText='display:flex;gap:.5rem';bx.appendChild(ed);bx.appendChild(x);
-      r.appendChild(t);r.appendChild(bx);l.appendChild(r);
-    });
-  }).catch(function(e){$('list').textContent='Could not load: '+e.message});
+function showTab(t){['details','videos'].forEach(function(n){$('sec-'+n).hidden=n!==t});document.querySelectorAll('.tab').forEach(function(b){b.classList.toggle('active',b.dataset.t===t)})}
+document.querySelectorAll('.tab').forEach(function(b){b.onclick=function(){showTab(b.dataset.t)}});
+var boxes=[],removed=[];
+function esc(t){return String(t==null?'':t).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}
+function renderBoxes(){
+  var c=$('boxes');c.innerHTML='';
+  if(!boxes.length){c.innerHTML='<p class="sub">No video boxes yet. Press "+ Add video box".</p>';return}
+  boxes.forEach(function(v,i){
+    var d=document.createElement('div');d.className='vbox';
+    d.innerHTML='<div class="vh"><b>Video '+(i+1)+'</b><button type="button" class="btn del sm">Delete this box</button></div>'+
+    '<label>YouTube link for Video '+(i+1)+'<input data-k="url" type="url" value="'+esc(v.url)+'" placeholder="https://www.youtube.com/watch?v=..."></label>'+
+    '<div class="grid"><label>Title (optional)<input data-k="title" value="'+esc(v.title)+'" placeholder="Video '+(i+1)+'"></label>'+
+    '<label>Category<select data-k="category"><option value="gaming">Gaming</option><option value="youtube">YouTube</option><option value="reels">Reels</option></select></label></div>'+
+    '<label>Short description (optional)<textarea data-k="description" rows="2">'+esc(v.description)+'</textarea></label>';
+    d.querySelector('select').value=v.category||'gaming';
+    d.querySelectorAll('[data-k]').forEach(function(el){el.oninput=el.onchange=function(){v[el.dataset.k]=el.value}});
+    d.querySelector('.del').onclick=function(){
+      if(!confirm('Delete Video '+(i+1)+'? It is removed from the website after you press Save all videos.'))return;
+      if(v.id)removed.push(v.id);boxes.splice(i,1);renderBoxes();
+    };
+    c.appendChild(d);
+  });
 }
+function loadVideos(){
+  db.collection('videos').orderBy('createdAt','asc').get().then(function(s){
+    boxes=[];removed=[];
+    s.forEach(function(d){var v=d.data();boxes.push({id:d.id,title:v.title||'',url:v.url||'',category:v.category||'gaming',description:v.description||''})});
+    renderBoxes();
+  }).catch(function(e){$('boxes').textContent='Could not load: '+e.message});
+}
+$('addbox').onclick=function(){boxes.push({title:'',url:'',category:'gaming',description:''});renderBoxes();var l=$('boxes').lastChild;if(l)l.scrollIntoView({behavior:'smooth',block:'center'})};
+$('saveall').onclick=function(){
+  for(var k=0;k<boxes.length;k++){
+    var u=(boxes[k].url||'').trim();
+    if(!/^https?:\/\//.test(u)){toast('Video '+(k+1)+': enter the full YouTube link.',1);return}
+  }
+  var btn=$('saveall');btn.disabled=true;
+  var ops=[];
+  removed.forEach(function(id){ops.push(db.collection('videos').doc(id).delete())});
+  boxes.forEach(function(v,i){
+    var data={title:(v.title||'').trim()||('Video '+(i+1)),url:v.url.trim(),category:v.category,description:(v.description||'').trim(),createdAt:firebase.firestore.Timestamp.fromMillis(Date.now()+i)};
+    ops.push(v.id?db.collection('videos').doc(v.id).set(data):db.collection('videos').add(data));
+  });
+  Promise.all(ops).then(function(){btn.disabled=false;toast('\u2713 Saved. Your website is updated.');loadVideos()})
+  .catch(function(er){btn.disabled=false;toast('Could not save: '+er.message,1)});
+};
 </script>
 </body>
 </html>
